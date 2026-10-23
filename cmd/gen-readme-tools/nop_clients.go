@@ -1,6 +1,10 @@
 package main
 
-import "context"
+import (
+	"context"
+
+	"github.com/openshift-eng/openshift-ci-mcp/pkg/client"
+)
 
 type nopSippy struct{}
 
@@ -25,5 +29,21 @@ func (nopSearch) Search(_ context.Context, _ string, _ map[string]string) ([]byt
 }
 
 func (nopSearch) Get(_ context.Context, _ string, _ map[string]string) ([]byte, error) {
+	return nil, nil
+}
+
+type nopProw struct{}
+
+func (nopProw) Decks() []client.Deck { return nil }
+
+func (nopProw) JobHistory(_ context.Context, _ client.Deck, _, _, _ string) (*client.JobHistoryPage, error) {
+	return nil, nil
+}
+
+func (nopProw) List(_ context.Context, _ client.Deck, _ string) (*client.Listing, error) {
+	return nil, nil
+}
+
+func (nopProw) Open(_ context.Context, _ client.Deck, _ string) (*client.Object, error) {
 	return nil, nil
 }

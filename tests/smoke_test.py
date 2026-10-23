@@ -146,6 +146,7 @@ class SmokeTests:
         self._test_payloads()
         self._test_pull_requests()
         self._test_search()
+        self._test_prow()
         self._test_proxy()
         return self._summary()
 
@@ -164,6 +165,8 @@ class SmokeTests:
                 "get_payload_status", "get_payload_diff", "get_payload_test_failures",
                 "get_release_prs", "get_pr_impact",
                 "search_ci_logs",
+                "get_prow_job_history", "get_prow_job_run", "get_prow_artifacts",
+                "get_prow_artifact_content",
             }
             proxy_tools = {"sippy_api", "release_controller_api", "search_ci_api"}
             missing_domain = domain_tools - names
@@ -394,6 +397,50 @@ class SmokeTests:
                         return  # Search.CI can be slow; timeout is not a test failure
                 assert not err, data
             self._test("search_ci_logs", t)
+
+    def _test_prow(self):
+        self._section("Prow")
+
+        if self._should("get_prow_job_history"):
+            def t():
+                data, err = self.client.call_tool("get_prow_job_history", {
+                    "job_name": self.ctx["job_name"], "limit": 3,
+                })
+                assert not err, data
+                runs = data.get("runs", [])
+                assert runs, "no runs in job history"
+                for run in runs:
+                    if run.get("result") not in ("PENDING", "TRIGGERED"):
+                        self.ctx["prow_run_url"] = run["url"]
+                        break
+            self._test("get_prow_job_history", t,
+                        skip_reason=None if self.ctx.get("job_name") else "no job_name from get_job_report")
+
+        run_skip = None if self.ctx.get("prow_run_url") else "no finished run from get_prow_job_history"
+
+        if self._should("get_prow_job_run"):
+            def t():
+                data, err = self.client.call_tool("get_prow_job_run", {"run_url": self.ctx["prow_run_url"]})
+                assert not err, data
+                assert data.get("build_id"), "missing build_id"
+                assert data.get("state") in ("finished", "running"), data.get("state")
+            self._test("get_prow_job_run", t, skip_reason=run_skip)
+
+        if self._should("get_prow_artifacts"):
+            def t():
+                data, err = self.client.call_tool("get_prow_artifacts", {"run_url": self.ctx["prow_run_url"]})
+                assert not err, data
+                assert isinstance(data.get("entries"), list)
+            self._test("get_prow_artifacts", t, skip_reason=run_skip)
+
+        if self._should("get_prow_artifact_content"):
+            def t():
+                data, err = self.client.call_tool("get_prow_artifact_content", {
+                    "run_url": self.ctx["prow_run_url"], "tail_lines": 5,
+                })
+                assert not err, data
+                assert data.get("mode") == "tail" and data.get("text"), data
+            self._test("get_prow_artifact_content", t, skip_reason=run_skip)
 
     def _test_proxy(self):
         self._section("Proxy")

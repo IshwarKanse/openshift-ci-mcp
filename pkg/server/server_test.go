@@ -15,8 +15,8 @@ func TestNew_ToolGroupGating(t *testing.T) {
 		{
 			name:    "default config enables all domain tools",
 			tools:   DefaultConfig().Tools,
-			wantLen: 19,
-			wantHas: []string{"get_releases", "get_job_report", "get_ci_test_report", "get_component_readiness", "get_release_prs", "search_ci_logs", "get_tool_fields"},
+			wantLen: 23,
+			wantHas: []string{"get_releases", "get_job_report", "get_ci_test_report", "get_component_readiness", "get_release_prs", "search_ci_logs", "get_tool_fields", "get_prow_job_history"},
 			wantNot: []string{"sippy_api", "release_controller_api", "search_ci_api"},
 		},
 		{
@@ -62,6 +62,13 @@ func TestNew_ToolGroupGating(t *testing.T) {
 			wantHas: []string{"search_ci_logs"},
 		},
 		{
+			name:    "prow only",
+			tools:   map[string]bool{"prow": true},
+			wantLen: 4,
+			wantHas: []string{"get_prow_job_history", "get_prow_job_run", "get_prow_artifacts", "get_prow_artifact_content"},
+			wantNot: []string{"get_job_runs"},
+		},
+		{
 			name:    "proxies group",
 			tools:   map[string]bool{"proxies": true},
 			wantLen: 3,
@@ -97,8 +104,8 @@ func TestNew_ToolGroupGating(t *testing.T) {
 		},
 		{
 			name:    "all groups",
-			tools:   map[string]bool{"core": true, "payload": true, "jobs": true, "tests": true, "prs": true, "search": true, "proxies": true},
-			wantLen: 22,
+			tools:   map[string]bool{"core": true, "payload": true, "jobs": true, "tests": true, "prs": true, "search": true, "prow": true, "proxies": true},
+			wantLen: 26,
 		},
 	}
 

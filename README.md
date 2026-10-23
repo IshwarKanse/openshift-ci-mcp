@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/github/license/openshift-eng/openshift-ci-mcp)
 ![Release](https://img.shields.io/github/v/release/openshift-eng/openshift-ci-mcp)
 
-MCP server providing read-only access to OpenShift CI data. Query Sippy, Release Controller, and Search.CI from any MCP-compatible client.
+MCP server providing read-only access to OpenShift CI data. Query Sippy, Release Controller, Search.CI, and Prow job logs and artifacts from any MCP-compatible client.
 
 ## Tools
 
@@ -33,6 +33,10 @@ MCP server providing read-only access to OpenShift CI data. Query Sippy, Release
 | `get_pr_impact` | `prs` | Use to get test failure impact data for a specific, known pull request. Rate-limited to 20 req/hour. |
 | `get_release_prs` | `prs` | Use to get a list of pull requests for a specific release or presubmits |
 | `search_ci_logs` | `search` | Search logs and JUnit output across OpenShift CI for error messages, test names, or patterns. |
+| `get_prow_artifact_content` | `prow` | Use to read a Prow job run's build log, a step's build log, or any text artifact, with tail, head or grep to keep the output small. Defaults to the last 200 lines of the run's build-log.txt. |
+| `get_prow_artifacts` | `prow` | Use to list the files and directories of a Prow job run, such as artifacts/<test>/<step>/ |
+| `get_prow_job_history` | `prow` | Use to list all runs of a Prow job, including pending and aborted runs, presubmits and /pj-rehearse runs that Sippy does not track |
+| `get_prow_job_run` | `prow` | Use to get one Prow job run's result, timing, refs and the pass/fail of each step, with failure excerpts and the test directories that hold step logs |
 <!-- END DOMAIN TOOLS -->
 
 ### Proxy Tools
@@ -148,7 +152,7 @@ By default all domain tools are enabled. Use `--tools` to selectively enable onl
 bin/openshift-ci-mcp --tools jobs,tests
 
 # Enable everything including proxy tools
-bin/openshift-ci-mcp --tools core,payload,jobs,tests,prs,search,proxies
+bin/openshift-ci-mcp --tools core,payload,jobs,tests,prs,search,prow,proxies
 ```
 
 <!-- BEGIN TOOL GROUPS -->
@@ -160,6 +164,7 @@ bin/openshift-ci-mcp --tools core,payload,jobs,tests,prs,search,proxies
 | `tests` | Test pass/fail/flake rates and recent failures | `get_ci_test_report`, `get_test_details`, `get_recent_test_failures` |
 | `prs` | Pull request listings and CI impact | `get_release_prs`, `get_pr_impact` |
 | `search` | Build log and JUnit failure search | `search_ci_logs` |
+| `prow` | Prow job history, run steps, logs and artifacts | `get_prow_job_history`, `get_prow_job_run`, `get_prow_artifacts`, `get_prow_artifact_content` |
 | `proxies` | Raw passthrough to upstream APIs | `sippy_api`, `release_controller_api`, `search_ci_api` |
 <!-- END TOOL GROUPS -->
 
@@ -201,3 +206,4 @@ All read-only, no authentication required.
 | Sippy | sippy.dptools.openshift.org | Jobs, tests, component readiness, regressions, payloads, health |
 | Release Controller | {arch}.ocp.releases.ci.openshift.org | Payload tags, acceptance status |
 | Search.CI | search.ci.openshift.org | Build log and JUnit failure search |
+| Prow | prow.ci.openshift.org and its gcsweb | Job history, run results and steps, logs and artifacts (`test-platform-results-public` bucket) |

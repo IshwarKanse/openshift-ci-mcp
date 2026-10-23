@@ -24,7 +24,7 @@ make verify             # Run all verification targets
 
 ## Architecture
 
-MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI) as 21 tools. All read-only, no authentication.
+MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI, Prow) as 26 tools. All read-only, no authentication.
 
 **Layers (top to bottom):**
 
@@ -33,7 +33,7 @@ MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI) as 
 3. **Tools** — Two tiers:
    - `pkg/tools/domain/` — Intent-oriented tools with parameter defaults, variant filtering, response composition. Each file groups related tools (jobs.go, tests.go, component.go, etc.)
    - `pkg/tools/proxy/` — Raw passthrough to upstream APIs, one file per data source
-4. **Clients** (`pkg/client/`) — Thin HTTP wrappers. Three interfaces: `Sippy`, `ReleaseController`, `SearchCI`. All return `([]byte, error)`.
+4. **Clients** (`pkg/client/`) — Thin HTTP wrappers. Interfaces: `Sippy`, `ReleaseController`, `SearchCI`, which return `([]byte, error)`, and `Prow`, which parses deck job history and gcsweb listings and streams objects.
 
 **Key patterns:**
 
@@ -56,3 +56,4 @@ MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI) as 
 - **Sippy** (`sippy.dptools.openshift.org`) — Central CI analysis. Most tools hit this.
 - **Release Controller** (`{arch}.ocp.releases.ci.openshift.org`) — Payload tags and acceptance status. Used by `get_payload_status` and `release_controller_api`.
 - **Search.CI** (`search.ci.openshift.org`) — Log and JUnit search. Used by `search_ci_logs` and `search_ci_api`.
+- **Prow** (`prow.ci.openshift.org` job history, gcsweb for the `test-platform-results-public` bucket) — Run history, run results and steps, logs and artifacts. Used by the `get_prow_*` tools. Decks are listed in `client.DefaultDecks`.

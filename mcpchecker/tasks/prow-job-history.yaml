@@ -1,0 +1,15 @@
+kind: Task
+apiVersion: mcpchecker/v1alpha2
+metadata:
+  name: prow-job-history
+  difficulty: easy
+  labels:
+    suite: prow
+    category: basic
+  parallel: true
+spec:
+  prompt:
+    inline: |
+      List every run of the Prow job "periodic-ci-openshift-release-main-nightly-4.20-e2e-aws-ovn-serial-1of2"
+      from the job's Prow history, including pending or aborted runs, with the result and start time of each.
+      Show the 5 most recent.

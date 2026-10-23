@@ -1,0 +1,14 @@
+kind: Task
+apiVersion: mcpchecker/v1alpha2
+metadata:
+  name: prow-build-log
+  difficulty: medium
+  labels:
+    suite: prow
+    category: basic
+  parallel: true
+spec:
+  prompt:
+    inline: |
+      Show me the last 20 lines of the build log of this CI run and tell me whether it passed:
+      https://prow.ci.openshift.org/view/gs/test-platform-results-public/pr-logs/pull/openshift_release/87540/pull-ci-openshift-release-main-core-valid/2113247331204730880

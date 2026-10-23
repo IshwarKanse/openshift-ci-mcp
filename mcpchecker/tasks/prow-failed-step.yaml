@@ -1,0 +1,14 @@
+kind: Task
+apiVersion: mcpchecker/v1alpha2
+metadata:
+  name: prow-failed-step
+  difficulty: hard
+  labels:
+    suite: prow
+    category: multi-tool
+  parallel: true
+spec:
+  prompt:
+    inline: |
+      Find the most recent failed run of the Prow job "periodic-ci-openshift-release-main-nightly-4.20-e2e-aws-ovn-serial-1of2".
+      Tell me which step failed and quote the most relevant error lines from that step's log.

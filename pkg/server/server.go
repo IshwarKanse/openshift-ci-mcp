@@ -29,6 +29,7 @@ var AllGroups = []ToolGroup{
 	{Name: "tests", Desc: "Test pass/fail/flake rates and recent failures", Tools: []string{"get_ci_test_report", "get_test_details", "get_recent_test_failures"}},
 	{Name: "prs", Desc: "Pull request listings and CI impact", Tools: []string{"get_release_prs", "get_pr_impact"}},
 	{Name: "search", Desc: "Build log and JUnit failure search", Tools: []string{"search_ci_logs"}},
+	{Name: "prow", Desc: "Prow job history, run steps, logs and artifacts", Tools: []string{"get_prow_job_history", "get_prow_job_run", "get_prow_artifacts", "get_prow_artifact_content"}},
 	{Name: "proxies", Desc: "Raw passthrough to upstream APIs", Tools: []string{"sippy_api", "release_controller_api", "search_ci_api"}},
 }
 
@@ -104,6 +105,7 @@ type Config struct {
 	Timeout              time.Duration
 	CacheTTL             time.Duration
 	Tools                map[string]bool
+	ProwDecks            []client.Deck
 }
 
 func DefaultConfig() Config {
@@ -118,6 +120,7 @@ func DefaultConfig() Config {
 		Timeout:              60 * time.Second,
 		CacheTTL:             5 * time.Minute,
 		Tools:                tools,
+		ProwDecks:            client.DefaultDecks,
 	}
 }
 
@@ -133,6 +136,7 @@ func New(cfg Config) *server.MCPServer {
 	sippy := client.NewSippy(cfg.SippyURL, httpClient)
 	rc := client.NewReleaseController(cfg.ReleaseControllerURL, httpClient)
 	search := client.NewSearchCI(cfg.SearchCIURL, httpClient)
+	prow := client.NewProw(cfg.ProwDecks, httpClient)
 	cache := client.NewResponseCache(cfg.CacheTTL)
 
 	s := server.NewMCPServer(
@@ -152,6 +156,7 @@ func New(cfg Config) *server.MCPServer {
 		{"tests", []string{"get_ci_test_report", "get_test_details", "get_recent_test_failures"}, func() { domain.RegisterTestTools(s, sippy, cache) }},
 		{"prs", []string{"get_release_prs", "get_pr_impact"}, func() { domain.RegisterPullRequestTools(s, sippy, cache) }},
 		{"search", []string{"search_ci_logs"}, func() { domain.RegisterSearchTools(s, search) }},
+		{"prow", []string{"get_prow_job_history", "get_prow_job_run", "get_prow_artifacts", "get_prow_artifact_content"}, func() { domain.RegisterProwTools(s, prow, cache) }},
 		{"proxies", []string{"sippy_api"}, func() { proxy.RegisterSippyProxy(s, sippy) }},
 		{"proxies", []string{"release_controller_api"}, func() { proxy.RegisterReleaseControllerProxy(s, rc) }},
 		{"proxies", []string{"search_ci_api"}, func() { proxy.RegisterSearchCIProxy(s, search) }},

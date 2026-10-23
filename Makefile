@@ -5,7 +5,7 @@ VERSION ?= 0.0.0-dev
 
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-.PHONY: build build-all test test-integration lint smoke smoke-container image push clean generate check check-domain check-core check-payload check-jobs check-tests check-prs check-proxies check-all
+.PHONY: build build-all test test-integration lint smoke smoke-container image push clean generate check check-domain check-core check-payload check-jobs check-tests check-prs check-prow check-proxies check-all
 
 build:
 	go build -o bin/$(BINARY) ./cmd/$(BINARY)
@@ -51,7 +51,7 @@ check: check-domain check-proxies
 check-domain: mcpchecker build
 	$(MCPCHECKER) check mcpchecker/domain-eval.yaml -p $(MCPCHECKER_PARALLEL_TESTS) -n $(MCPCHECKER_TEST_COUNT) -o $(MCPCHECKER_OUTPUT_TYPE)
 
-check-core check-payload check-jobs check-tests check-prs: check-%: mcpchecker build
+check-core check-payload check-jobs check-tests check-prs check-prow: check-%: mcpchecker build
 	$(MCPCHECKER) check mcpchecker/domain-eval.yaml -l suite=$* -p $(MCPCHECKER_PARALLEL_TESTS) -n $(MCPCHECKER_TEST_COUNT) -o $(MCPCHECKER_OUTPUT_TYPE)
 
 check-proxies: mcpchecker build
