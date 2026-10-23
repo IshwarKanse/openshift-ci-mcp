@@ -72,6 +72,17 @@ config:
         minToolCalls: 1
         maxToolCalls: 5
 
+    # Prow tools (get_prow_job_history, get_prow_job_run, get_prow_artifacts, get_prow_artifact_content)
+    - glob: tasks/*.yaml
+      labelSelector:
+        suite: prow
+      assertions:
+        toolsUsed:
+          - server: openshift-ci
+            toolPattern: "get_prow_.*"
+        minToolCalls: 1
+        maxToolCalls: 8
+
     # Multi-tool workflow
     - glob: tasks/*.yaml
       labelSelector:
