@@ -145,20 +145,20 @@ type JobRunsResponse struct {
 // JobReportRow is the trimmed representation of a Sippy job report entry.
 // Source has ~16 fields; this keeps ~10.
 type JobReportRow struct {
-	Name                              string   `json:"name"`
-	BriefName                         string   `json:"brief_name,omitempty"`
-	Variants                          []string `json:"variants,omitempty"`
-	LastPass                          string   `json:"last_pass,omitempty"`
-	CurrentPassPercentage             float64  `json:"current_pass_percentage"`
-	CurrentProjectedPassPercentage    float64  `json:"current_projected_pass_percentage"`
-	CurrentRuns                       int      `json:"current_runs"`
-	CurrentFails                      int      `json:"current_fails"`
-	PreviousPassPercentage            float64  `json:"previous_pass_percentage"`
-	PreviousProjectedPassPercentage   float64  `json:"previous_projected_pass_percentage"`
-	PreviousRuns                      int      `json:"previous_runs"`
-	NetImprovement                    float64  `json:"net_improvement"`
-	AverageRetestsToMerge             float64  `json:"average_retests_to_merge"`
-	OpenBugs                          int      `json:"open_bugs"`
+	Name                            string   `json:"name"`
+	BriefName                       string   `json:"brief_name,omitempty"`
+	Variants                        []string `json:"variants,omitempty"`
+	LastPass                        string   `json:"last_pass,omitempty"`
+	CurrentPassPercentage           float64  `json:"current_pass_percentage"`
+	CurrentProjectedPassPercentage  float64  `json:"current_projected_pass_percentage"`
+	CurrentRuns                     int      `json:"current_runs"`
+	CurrentFails                    int      `json:"current_fails"`
+	PreviousPassPercentage          float64  `json:"previous_pass_percentage"`
+	PreviousProjectedPassPercentage float64  `json:"previous_projected_pass_percentage"`
+	PreviousRuns                    int      `json:"previous_runs"`
+	NetImprovement                  float64  `json:"net_improvement"`
+	AverageRetestsToMerge           float64  `json:"average_retests_to_merge"`
+	OpenBugs                        int      `json:"open_bugs"`
 }
 
 // TestReportMetrics holds the derivable current/previous/net fields
@@ -185,16 +185,16 @@ type TestReportMetrics struct {
 // fields; the output nests the derivable current/previous/net fields under
 // a "metrics" sub-object to separate primary data from secondary detail.
 type TestReportRow struct {
-	Name                  string            `json:"name"`
-	SuiteName             string            `json:"suite_name,omitempty"`
-	JiraComponent         string            `json:"jira_component,omitempty"`
-	Variants              []string          `json:"variants,omitempty"`
-	CurrentPassPercentage float64           `json:"current_pass_percentage"`
-	CurrentRuns           int               `json:"current_runs"`
-	CurrentSuccesses      int               `json:"current_successes"`
-	CurrentFailures       int               `json:"current_failures"`
-	CurrentFlakes         int               `json:"current_flakes"`
-	NetImprovement        float64           `json:"net_improvement"`
+	Name                  string             `json:"name"`
+	SuiteName             string             `json:"suite_name,omitempty"`
+	JiraComponent         string             `json:"jira_component,omitempty"`
+	Variants              []string           `json:"variants,omitempty"`
+	CurrentPassPercentage float64            `json:"current_pass_percentage"`
+	CurrentRuns           int                `json:"current_runs"`
+	CurrentSuccesses      int                `json:"current_successes"`
+	CurrentFailures       int                `json:"current_failures"`
+	CurrentFlakes         int                `json:"current_flakes"`
+	NetImprovement        float64            `json:"net_improvement"`
 	OpenBugs              int                `json:"open_bugs"`
 	Metrics               *TestReportMetrics `json:"metrics,omitempty"`
 }
@@ -314,9 +314,9 @@ type ClusterOperatorStatus struct {
 // ---------------------------------------------------------------------------
 
 type TestDetailsResponse struct {
-	Title       string                              `json:"title"`
-	Description string                              `json:"description"`
-	ColumnNames []string                            `json:"column_names"`
+	Title       string                               `json:"title"`
+	Description string                               `json:"description"`
+	ColumnNames []string                             `json:"column_names"`
 	Tests       map[string]map[string]TestDetailCell `json:"tests"`
 }
 
@@ -408,10 +408,10 @@ type PayloadFailedJobs struct {
 // ---------------------------------------------------------------------------
 
 type ReleasesResponse struct {
-	Releases     []string                    `json:"releases"`
-	GADates      map[string]string           `json:"ga_dates,omitempty"`
-	Dates        map[string]ReleaseDates     `json:"dates"`
-	LastUpdated  string                      `json:"last_updated"`
+	Releases     []string                     `json:"releases"`
+	GADates      map[string]string            `json:"ga_dates,omitempty"`
+	Dates        map[string]ReleaseDates      `json:"dates"`
+	LastUpdated  string                       `json:"last_updated"`
 	ReleaseAttrs map[string]ReleaseAttrsEntry `json:"release_attrs"`
 }
 
@@ -662,7 +662,7 @@ type RegressionMatch struct {
 
 type SimilarTest struct {
 	Regression   Regression `json:"regression"`
-	EditDistance  int        `json:"edit_distance"`
+	EditDistance int        `json:"edit_distance"`
 }
 
 type TriageExpanded struct {
@@ -702,7 +702,7 @@ type JiraBug struct {
 // ---------------------------------------------------------------------------
 
 type ComponentReadinessView struct {
-	Name          string `json:"name"`
+	Name string `json:"name"`
 }
 
 // ---------------------------------------------------------------------------
@@ -762,22 +762,22 @@ func jsonFields(t reflect.Type) []string {
 // available for use with the `fields` parameter.
 func ToolFieldRegistry() map[string][]string {
 	return map[string][]string{
-		"get_job_report":           jsonFields(reflect.TypeFor[JobReportRow]()),
-		"get_job_runs":             jsonFields(reflect.TypeFor[JobRunRow]()),
-		"get_job_run_summary":      jsonFields(reflect.TypeFor[JobRunSummary]()),
-		"get_ci_test_report":       jsonFields(reflect.TypeFor[TestReportRow]()),
-		"get_test_details":         jsonFields(reflect.TypeFor[TestDetailsResponse]()),
-		"get_recent_test_failures": jsonFields(reflect.TypeFor[TestReportRow]()),
-		"get_component_readiness":  jsonFields(reflect.TypeFor[ComponentReadinessResponse]()),
-		"get_regressions":          jsonFields(reflect.TypeFor[Regression]()),
-		"get_regression_detail":    {"regression", "matching_triages"},
-		"get_payload_status":       jsonFields(reflect.TypeFor[ReleaseTag]()),
-		"get_payload_diff":         jsonFields(reflect.TypeFor[PayloadDiffRow]()),
+		"get_job_report":            jsonFields(reflect.TypeFor[JobReportRow]()),
+		"get_job_runs":              jsonFields(reflect.TypeFor[JobRunRow]()),
+		"get_job_run_summary":       jsonFields(reflect.TypeFor[JobRunSummary]()),
+		"get_ci_test_report":        jsonFields(reflect.TypeFor[TestReportRow]()),
+		"get_test_details":          jsonFields(reflect.TypeFor[TestDetailsResponse]()),
+		"get_recent_test_failures":  jsonFields(reflect.TypeFor[TestReportRow]()),
+		"get_component_readiness":   jsonFields(reflect.TypeFor[ComponentReadinessResponse]()),
+		"get_regressions":           jsonFields(reflect.TypeFor[Regression]()),
+		"get_regression_detail":     {"regression", "matching_triages"},
+		"get_payload_status":        jsonFields(reflect.TypeFor[ReleaseTag]()),
+		"get_payload_diff":          jsonFields(reflect.TypeFor[PayloadDiffRow]()),
 		"get_payload_test_failures": jsonFields(reflect.TypeFor[PayloadTestFailure]()),
-		"get_releases":             jsonFields(reflect.TypeFor[ReleasesResponse]()),
-		"get_release_health":       {"health", "release_health"},
-		"get_pr_impact":            jsonFields(reflect.TypeFor[PRTestResult]()),
-		"get_release_prs":          jsonFields(reflect.TypeFor[PullRequestRow]()),
-		"search_ci_logs":           jsonFields(reflect.TypeFor[SearchResponse]()),
+		"get_releases":              jsonFields(reflect.TypeFor[ReleasesResponse]()),
+		"get_release_health":        {"health", "release_health"},
+		"get_pr_impact":             jsonFields(reflect.TypeFor[PRTestResult]()),
+		"get_release_prs":           jsonFields(reflect.TypeFor[PullRequestRow]()),
+		"search_ci_logs":            jsonFields(reflect.TypeFor[SearchResponse]()),
 	}
 }

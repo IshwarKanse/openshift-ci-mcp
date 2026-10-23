@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/client"
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/tools/domain"
@@ -221,6 +222,26 @@ func TestGetProwJobHistory_PR(t *testing.T) {
 	}
 	if _, ok := out["next_start_build_id"]; ok {
 		t.Errorf("no more runs expected, got next_start_build_id %v", out["next_start_build_id"])
+	}
+}
+
+func TestGetProwJobHistory_LimitIsCapped(t *testing.T) {
+	// 150 runs for one PR: limit 500 returns the first 100 and a page link.
+	f := &fakeProw{listings: map[string][]client.ArtifactEntry{prDir: {}}, objects: map[string]string{}}
+	for id := 1; id <= 150; id++ {
+		f.listings[prDir] = append(f.listings[prDir], client.ArtifactEntry{Name: fmt.Sprint(id), Type: "dir"})
+	}
+	out, isErr := callTool(t, domain.GetProwJobHistoryHandler(f, nil), map[string]any{"job_name": "pull-ci-o-r-main-e2e", "pr": "7", "org_repo": "o_r", "limit": float64(500)})
+	if isErr {
+		t.Fatalf("unexpected error: %v", out)
+	}
+	if n := len(out["runs"].([]any)); n != 100 || out["next_start_build_id"] != "50" {
+		t.Errorf("got %d runs and next_start_build_id %v, want 100 and 50", n, out["next_start_build_id"])
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.opened) > 300 {
+		t.Errorf("read %d objects for 100 runs", len(f.opened))
 	}
 }
 
@@ -513,6 +534,19 @@ func TestGetProwArtifactContent_DirectoryPath(t *testing.T) {
 	}
 }
 
+type authFailProw struct{ fakeProw }
+
+func (*authFailProw) Open(context.Context, client.Deck, string) (*client.Object, error) {
+	return nil, &client.AuthError{Deck: "qe-private", TokenEnv: "OPENSHIFT_CI_TOKEN"}
+}
+
+func TestGetProwArtifactContent_AuthErrorIs401(t *testing.T) {
+	out, isErr := callTool(t, domain.GetProwArtifactContentHandler(&authFailProw{}), map[string]any{"run_url": runURL})
+	if !isErr || out["status_code"] != float64(401) || !strings.Contains(out["error"].(string), "OPENSHIFT_CI_TOKEN") {
+		t.Errorf("unexpected result: %v", out)
+	}
+}
+
 func TestGetProwJobHistory_TruncatedAtPageCap(t *testing.T) {
 	// A limit larger than the page cap reads: the scan must stop at the cap
 	// and say so.
@@ -555,6 +589,51 @@ func TestGetProwJobRun_MixedFailuresReportTheNon404(t *testing.T) {
 		t.Errorf("expected the 502 to be reported, got %v", out)
 	}
 }
+
+type authFailListProw struct{ fakeProw }
+
+func (*authFailListProw) List(context.Context, client.Deck, string) (*client.Listing, error) {
+	return nil, &client.AuthError{Deck: "qe-private", TokenEnv: "OPENSHIFT_CI_TOKEN", Rejected: true}
+}
+
+func TestGetProwArtifactContent_StepLookupAuthErrorIs401(t *testing.T) {
+	out, isErr := callTool(t, domain.GetProwArtifactContentHandler(&authFailListProw{}), map[string]any{"run_url": runURL, "step": "install"})
+	if !isErr || out["status_code"] != float64(401) {
+		t.Errorf("unexpected result: %v", out)
+	}
+}
+
+func TestGetProwJobHistory_PRAuthErrorIs401(t *testing.T) {
+	out, isErr := callTool(t, domain.GetProwJobHistoryHandler(&authFailListProw{}, nil), map[string]any{"job_name": "rehearse-5-pull-ci-x", "pr": "5"})
+	if !isErr || out["status_code"] != float64(401) {
+		t.Errorf("unexpected result: %v", out)
+	}
+	// A run read that fails with an auth error is a 401 too.
+	f := &authFailProw{fakeProw: fakeProw{listings: map[string][]client.ArtifactEntry{
+		"pr-logs/pull/openshift_release/5/rehearse-5-pull-ci-x/": {{Name: "3", Type: "dir"}},
+	}}}
+	if out, isErr := callTool(t, domain.GetProwJobHistoryHandler(f, nil), map[string]any{"job_name": "rehearse-5-pull-ci-x", "pr": "5"}); !isErr || out["status_code"] != float64(401) {
+		t.Errorf("unexpected result for a failed run read: %v", out)
+	}
+}
+
+func TestRegisterProwTools_DeckChoices(t *testing.T) {
+	f := &decksProw{decks: []client.Deck{testDeck, {Name: "qe-private"}, {Name: "my-deck"}}}
+	s := server.NewMCPServer("t", "0")
+	domain.RegisterProwTools(s, f, nil)
+	tool := s.ListTools()["get_prow_job_history"].Tool
+	desc := tool.InputSchema.Properties["deck"].(map[string]any)["description"].(string)
+	if !strings.Contains(desc, "qe-private") || !strings.Contains(desc, "my-deck") {
+		t.Errorf("deck description misses configured decks: %q", desc)
+	}
+}
+
+type decksProw struct {
+	fakeProw
+	decks []client.Deck
+}
+
+func (d *decksProw) Decks() []client.Deck { return d.decks }
 
 func TestGetProwJobRun_NotFound(t *testing.T) {
 	out, isErr := callTool(t, domain.GetProwJobRunHandler(&fakeProw{}, nil), map[string]any{"run_url": runURL})

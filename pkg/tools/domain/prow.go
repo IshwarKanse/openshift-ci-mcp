@@ -24,18 +24,19 @@ import (
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/tools"
 )
 
-func runParams() []mcp.ToolOption {
+func runParams(decks string) []mcp.ToolOption {
 	return []mcp.ToolOption{
 		mcp.WithString("run_url", mcp.Description("Prow URL of the run: the Details link of a PR check, a Spyglass or gcsweb URL. Preferred over job_name/build_id.")),
 		mcp.WithString("job_name", mcp.Description("Job name, with build_id, when run_url is not given")),
 		mcp.WithString("build_id", mcp.Description("Build ID of the run, with job_name")),
 		mcp.WithString("pr", mcp.Description("PR number, for presubmit runs given by job_name (derived for rehearse-<pr>-* jobs)")),
 		mcp.WithString("org_repo", mcp.Description("Repository of the PR as org_repo or org/repo, for presubmit runs given by job_name (default openshift_release for rehearse-* jobs)")),
-		mcp.WithString("deck", mcp.Description("Deck of the run when run_url is not given (default: public)")),
+		mcp.WithString("deck", mcp.Description("Deck of the run when run_url is not given: "+decks)),
 	}
 }
 
 func RegisterProwTools(s *server.MCPServer, prow client.Prow, cache *client.ResponseCache) {
+	decks := deckChoices(prow.Decks())
 	s.AddTool(
 		mcp.NewTool("get_prow_job_history",
 			mcp.WithDescription("Use to list all runs of a Prow job, including pending and aborted runs, presubmits and /pj-rehearse runs that Sippy does not track"),
@@ -44,11 +45,11 @@ func RegisterProwTools(s *server.MCPServer, prow client.Prow, cache *client.Resp
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("job_name", mcp.Required(), mcp.Description("Exact Prow job name")),
-			mcp.WithString("deck", mcp.Description("Deck the job reports to (default: public)")),
+			mcp.WithString("deck", mcp.Description("Deck the job reports to: "+decks)),
 			mcp.WithString("job_type", mcp.Description("presubmit, postsubmit or periodic. Default: presubmit for pull-ci-* and rehearse-* jobs, otherwise periodic")),
 			mcp.WithString("pr", mcp.Description("Only runs for this PR number (presubmits); needs org_repo unless the job is rehearse-*. Batch runs that tested the PR with others are not included")),
 			mcp.WithString("org_repo", mcp.Description("Repository of the PR as org_repo or org/repo, with pr (default openshift_release for rehearse-* jobs)")),
-			mcp.WithNumber("limit", mcp.Description("Max runs to return (default 20)"), mcp.DefaultNumber(20)),
+			mcp.WithNumber("limit", mcp.Description("Max runs to return (default 20, max 100); page with start_build_id for more"), mcp.DefaultNumber(20)),
 			mcp.WithString("start_build_id", mcp.Description("Start from this build ID and go back in time; pass next_start_build_id from a previous call to page")),
 		),
 		GetProwJobHistoryHandler(prow, cache),
@@ -62,7 +63,7 @@ func RegisterProwTools(s *server.MCPServer, prow client.Prow, cache *client.Resp
 				mcp.WithDestructiveHintAnnotation(false),
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(true),
-			}, runParams()...)...,
+			}, runParams(decks)...)...,
 		),
 		GetProwJobRunHandler(prow, cache),
 	)
@@ -76,7 +77,7 @@ func RegisterProwTools(s *server.MCPServer, prow client.Prow, cache *client.Resp
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(true),
 				mcp.WithString("path", mcp.Description("Directory relative to the run root (default: artifacts/)")),
-			}, runParams()...)...,
+			}, runParams(decks)...)...,
 		),
 		GetProwArtifactsHandler(prow),
 	)
@@ -98,7 +99,7 @@ func RegisterProwTools(s *server.MCPServer, prow client.Prow, cache *client.Resp
 				mcp.WithNumber("head_lines", mcp.Description("Return the first N lines instead of the tail")),
 				mcp.WithNumber("tail_lines", mcp.Description("Return the last N lines (default 200)")),
 				mcp.WithNumber("max_bytes", mcp.Description("Max bytes of text returned (default 65536, max 1048576)")),
-			}, runParams()...)...,
+			}, runParams(decks)...)...,
 		),
 		GetProwArtifactContentHandler(prow),
 	)
@@ -129,6 +130,9 @@ type prowJobHistory struct {
 	HistoryURL string `json:"history_url"`
 }
 
+// maxHistoryRuns caps limit: with pr, each run costs two or three reads.
+const maxHistoryRuns = 100
+
 // maxHistoryPages bounds how many job-history pages (20 runs each) one
 // call reads while filling the limit.
 const maxHistoryPages = 10
@@ -147,10 +151,7 @@ func GetProwJobHistoryHandler(prow client.Prow, cache *client.ResponseCache) ser
 		if err != nil {
 			return tools.InvalidParam("job_type", err.Error())
 		}
-		limit := req.GetInt("limit", 20)
-		if limit < 1 {
-			limit = 1
-		}
+		limit := min(max(req.GetInt("limit", 20), 1), maxHistoryRuns)
 		start := req.GetString("start_build_id", "")
 		if start != "" && !buildID.MatchString(start) {
 			return tools.InvalidParam("start_build_id", "must be a numeric build ID")
@@ -179,7 +180,7 @@ func GetProwJobHistoryHandler(prow client.Prow, cache *client.ResponseCache) ser
 		for {
 			page, err := jobHistoryPage(ctx, prow, cache, deck, dir, job, start)
 			if err != nil {
-				return tools.ToolError(err)
+				return prowToolError(err)
 			}
 			result.PagesScanned++
 			for _, b := range page.Builds {
@@ -246,7 +247,7 @@ func prJobHistory(ctx context.Context, prow client.Prow, deck client.Deck, job, 
 		return jsonResult(result)
 	}
 	if err != nil {
-		return tools.ToolError(err)
+		return prowToolError(err)
 	}
 	var ids []uint64
 	for _, e := range listing.Entries {
@@ -300,7 +301,7 @@ func prJobHistory(ctx context.Context, prow client.Prow, deck client.Deck, job, 
 		// Reads stopped by the cancel report context.Canceled; return the
 		// failure that caused it.
 		if err != nil && !errors.Is(err, context.Canceled) {
-			return tools.ToolError(err)
+			return prowToolError(err)
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -629,7 +630,7 @@ func GetProwJobRunHandler(prow client.Prow, cache *client.ResponseCache) server.
 			return jsonResult(running.run)
 		}
 		if err != nil {
-			return tools.ToolError(err)
+			return prowToolError(err)
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
@@ -835,7 +836,7 @@ func GetProwArtifactsHandler(prow client.Prow) server.ToolHandlerFunc {
 			return tools.InvalidParam("path", strings.TrimSuffix(rel, "/")+" is a file; use get_prow_artifact_content")
 		}
 		if err != nil {
-			return tools.ToolError(err)
+			return prowToolError(err)
 		}
 		out := prowArtifacts{Path: rel, Entries: []client.ArtifactEntry{}, Truncated: listing.Truncated, URL: ref.ObjectURL(rel)}
 		prefix := ref.Path + "/"
@@ -949,7 +950,7 @@ func GetProwArtifactContentHandler(prow client.Prow) server.ToolHandlerFunc {
 				return tools.ToolError(&client.HTTPError{StatusCode: http.StatusNotFound, Body: []byte(fmt.Sprintf(
 					"%s not found in run %s/%s (it may not exist, or the step has not finished yet)", rel, ref.Job, ref.BuildID))})
 			}
-			return tools.ToolError(err)
+			return prowToolError(err)
 		}
 		defer obj.Body.Close()
 
@@ -982,7 +983,7 @@ func onlyTestDir(ctx context.Context, prow client.Prow, ref client.RunRef) (stri
 		return notFound("run %s/%s has no artifacts/ yet (it may not exist, or no step has finished)")
 	}
 	if err != nil {
-		res, _ := tools.ToolError(fmt.Errorf("listing artifacts/ to find the test: %w", err))
+		res, _ := prowToolError(fmt.Errorf("listing artifacts/ to find the test: %w", err))
 		return "", res
 	}
 	switch dirs := testDirs(listing.Entries); len(dirs) {
@@ -994,6 +995,26 @@ func onlyTestDir(ctx context.Context, prow client.Prow, ref client.RunRef) (stri
 		res, _ := tools.InvalidParam("test", "set test to one of: "+strings.Join(dirs, ", "))
 		return "", res
 	}
+}
+
+// deckChoices describes the deck names for the deck parameter.
+func deckChoices(decks []client.Deck) string {
+	names := []string{"public (default)"}
+	for _, d := range decks {
+		if d.Name != "public" {
+			names = append(names, d.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// prowToolError reports a missing or rejected deck token as HTTP 401.
+func prowToolError(err error) (*mcp.CallToolResult, error) {
+	var authErr *client.AuthError
+	if errors.As(err, &authErr) {
+		return tools.ToolError(&client.HTTPError{StatusCode: http.StatusUnauthorized, Body: []byte(authErr.Error())})
+	}
+	return tools.ToolError(err)
 }
 
 func jsonResult(v any) (*mcp.CallToolResult, error) {
