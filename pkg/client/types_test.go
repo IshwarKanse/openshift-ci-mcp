@@ -43,23 +43,31 @@ func TestReshapeJSON_JobRunsResponse(t *testing.T) {
 	input := `{
 		"rows": [
 			{
-				"id": 1,
-				"prow_id": 1,
+				"id": 2116944951399944192,
 				"brief_name": "job-1",
+				"variants": ["Platform:aws", "Architecture:amd64"],
+				"tags": null,
+				"test_grid_url": "https://prow.ci/view/1",
+				"prow_id": "2116944951399944192",
 				"job": "periodic-ci-job-1",
+				"cluster": "build05",
 				"url": "https://prow.ci/1",
-				"test_failures": 3,
 				"test_flakes": 1,
+				"flaked_test_names": null,
+				"test_failures": 3,
+				"failed_test_names": ["test-a"],
 				"failed": false,
 				"infrastructure_failure": false,
 				"known_failure": false,
 				"succeeded": true,
-				"timestamp": 1700000000,
+				"timestamp": "2026-11-01T17:26:15Z",
 				"overall_result": "S",
-				"cluster": "build05",
 				"pull_request_org": "",
 				"pull_request_repo": "",
-				"tags": null
+				"pull_request_link": "",
+				"pull_request_sha": "",
+				"pull_request_author": "",
+				"labels": null
 			}
 		],
 		"page_size": 25,
@@ -83,7 +91,7 @@ func TestReshapeJSON_JobRunsResponse(t *testing.T) {
 	}
 	row := rows[0].(map[string]any)
 
-	for _, dropped := range []string{"id", "cluster", "pull_request_org", "pull_request_repo", "tags"} {
+	for _, dropped := range []string{"id", "cluster", "test_grid_url", "pull_request_org", "pull_request_repo", "pull_request_link", "tags"} {
 		if _, ok := row[dropped]; ok {
 			t.Errorf("expected '%s' to be dropped", dropped)
 		}
@@ -92,6 +100,13 @@ func TestReshapeJSON_JobRunsResponse(t *testing.T) {
 		if _, ok := row[kept]; !ok {
 			t.Errorf("expected '%s' to be kept", kept)
 		}
+	}
+	// Sippy sends prow_id and timestamp as strings; the ID must keep all digits.
+	if row["prow_id"] != "2116944951399944192" {
+		t.Errorf("prow_id = %v, want the exact string ID", row["prow_id"])
+	}
+	if row["timestamp"] != "2026-11-01T17:26:15Z" {
+		t.Errorf("timestamp = %v, want the RFC 3339 string", row["timestamp"])
 	}
 
 	if result["total_rows"].(float64) != 1 {
@@ -292,6 +307,52 @@ func TestFilterFields_WrappedRows(t *testing.T) {
 	}
 	if _, ok := row["cluster"]; ok {
 		t.Error("expected cluster to be filtered from row")
+	}
+}
+
+func TestFilterFields_PreservesLargeIntegers(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "array",
+			input: `[{"id":2112233877102661632,"job":"j","cluster":"build07"}]`,
+			want:  `[{"id":2112233877102661632,"job":"j"}]`,
+		},
+		{
+			name:  "wrapped rows",
+			input: `{"rows":[{"id":2112233877102661632,"job":"j","cluster":"build07"}],"page":1}`,
+			want:  `{"page":1,"rows":[{"id":2112233877102661632,"job":"j"}]}`,
+		},
+		{
+			name:  "object",
+			input: `{"id":2112233877102661632,"job":"j","cluster":"build07"}`,
+			want:  `{"id":2112233877102661632,"job":"j"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := FilterFields([]byte(tt.input), "id,job")
+			if err != nil {
+				t.Fatalf("FilterFields failed: %v", err)
+			}
+			if string(out) != tt.want {
+				t.Errorf("got %s, want %s", out, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterFields_TrailingDataUnchanged(t *testing.T) {
+	input := `[{"id":1}] trailing`
+	out, err := FilterFields([]byte(input), "id")
+	if err != nil {
+		t.Fatalf("FilterFields failed: %v", err)
+	}
+	if string(out) != input {
+		t.Errorf("expected invalid JSON to be returned unchanged, got %s", out)
 	}
 }
 

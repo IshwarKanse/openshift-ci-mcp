@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -12,14 +14,21 @@ import (
 func ToolError(err error) (*mcp.CallToolResult, error) {
 	var httpErr *client.HTTPError
 	if errors.As(err, &httpErr) {
-		msg := fmt.Sprintf(`{"error":%q,"status_code":%d}`, httpErr.Error(), httpErr.StatusCode)
-		return mcp.NewToolResultError(msg), nil
+		return errorResult(httpErr.Error(), httpErr.StatusCode), nil
 	}
-	msg := fmt.Sprintf(`{"error":%q,"status_code":500}`, err.Error())
-	return mcp.NewToolResultError(msg), nil
+	return errorResult(err.Error(), http.StatusInternalServerError), nil
 }
 
 func InvalidParam(name, detail string) (*mcp.CallToolResult, error) {
-	msg := fmt.Sprintf(`{"error":"invalid parameter %q: %s","status_code":400}`, name, detail)
-	return mcp.NewToolResultError(msg), nil
+	return errorResult(fmt.Sprintf("invalid parameter %q: %s", name, detail), http.StatusBadRequest), nil
+}
+
+// errorResult encodes the error as JSON. Building it with %q is not enough:
+// Go escapes such as \x01 are not valid JSON.
+func errorResult(msg string, status int) *mcp.CallToolResult {
+	data, _ := json.Marshal(struct {
+		Error      string `json:"error"`
+		StatusCode int    `json:"status_code"`
+	}{msg, status})
+	return mcp.NewToolResultError(string(data))
 }
