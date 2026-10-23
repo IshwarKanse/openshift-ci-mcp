@@ -295,6 +295,52 @@ func TestFilterFields_WrappedRows(t *testing.T) {
 	}
 }
 
+func TestFilterFields_PreservesLargeIntegers(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "array",
+			input: `[{"id":2112233877102661632,"job":"j","cluster":"build07"}]`,
+			want:  `[{"id":2112233877102661632,"job":"j"}]`,
+		},
+		{
+			name:  "wrapped rows",
+			input: `{"rows":[{"id":2112233877102661632,"job":"j","cluster":"build07"}],"page":1}`,
+			want:  `{"page":1,"rows":[{"id":2112233877102661632,"job":"j"}]}`,
+		},
+		{
+			name:  "object",
+			input: `{"id":2112233877102661632,"job":"j","cluster":"build07"}`,
+			want:  `{"id":2112233877102661632,"job":"j"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := FilterFields([]byte(tt.input), "id,job")
+			if err != nil {
+				t.Fatalf("FilterFields failed: %v", err)
+			}
+			if string(out) != tt.want {
+				t.Errorf("got %s, want %s", out, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterFields_TrailingDataUnchanged(t *testing.T) {
+	input := `[{"id":1}] trailing`
+	out, err := FilterFields([]byte(input), "id")
+	if err != nil {
+		t.Fatalf("FilterFields failed: %v", err)
+	}
+	if string(out) != input {
+		t.Errorf("expected invalid JSON to be returned unchanged, got %s", out)
+	}
+}
+
 func TestFilterFields_EmptyString(t *testing.T) {
 	input := `[{"name":"x","id":1}]`
 	out, err := FilterFields([]byte(input), "")

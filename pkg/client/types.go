@@ -1,7 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"reflect"
 	"strings"
 )
@@ -25,7 +28,7 @@ func FilterFields(data []byte, fields string) ([]byte, error) {
 	}
 
 	var arr []map[string]any
-	if json.Unmarshal(data, &arr) == nil {
+	if unmarshalUseNumber(data, &arr) == nil {
 		for _, m := range arr {
 			stripKeys(m, keep)
 		}
@@ -33,7 +36,7 @@ func FilterFields(data []byte, fields string) ([]byte, error) {
 	}
 
 	var obj map[string]any
-	if json.Unmarshal(data, &obj) == nil {
+	if unmarshalUseNumber(data, &obj) == nil {
 		if rows, ok := obj["rows"].([]any); ok {
 			for _, row := range rows {
 				if m, ok := row.(map[string]any); ok {
@@ -47,6 +50,20 @@ func FilterFields(data []byte, fields string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// unmarshalUseNumber is json.Unmarshal that keeps numbers as json.Number,
+// so large integers such as Prow job run IDs don't lose precision.
+func unmarshalUseNumber(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("unexpected data after top-level JSON value")
+	}
+	return nil
 }
 
 func stripKeys(m map[string]any, keep map[string]bool) {

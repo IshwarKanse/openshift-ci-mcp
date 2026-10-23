@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/client"
 )
@@ -36,12 +37,30 @@ func ResolveRelease(ctx context.Context, sippy client.Sippy, release string) (st
 		return "", fmt.Errorf("no releases available")
 	}
 
+	// Sippy also lists non-OCP releases (gcp-hcp-main, quay-*, *-okd, ...)
+	// that have no GA date, so prefer OCP releases before falling back.
+	var ocp []string
 	for _, r := range resp.Releases {
-		dates, ok := resp.Dates[r]
-		if !ok || dates.GA == nil {
-			return r, nil
+		if ocpRelease.MatchString(r) {
+			ocp = append(ocp, r)
 		}
 	}
+	if len(ocp) > 0 {
+		return firstWithoutGA(ocp, resp.Dates), nil
+	}
+	return firstWithoutGA(resp.Releases, resp.Dates), nil
+}
 
-	return resp.Releases[0], nil
+var ocpRelease = regexp.MustCompile(`^\d+\.\d+$`)
+
+// firstWithoutGA returns the first release that has no GA date (in
+// development), or the first release if all of them are GA.
+func firstWithoutGA(releases []string, dates map[string]releaseDateInfo) string {
+	for _, r := range releases {
+		d, ok := dates[r]
+		if !ok || d.GA == nil {
+			return r
+		}
+	}
+	return releases[0]
 }

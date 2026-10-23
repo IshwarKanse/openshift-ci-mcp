@@ -3,6 +3,10 @@ package domain
 import (
 	"context"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -36,7 +40,11 @@ func SearchCILogsHandler(search client.SearchCI) server.ToolHandlerFunc {
 			"maxResults": fmt.Sprintf("%d", req.GetInt("limit", 25)),
 		}
 		if maxAge := req.GetString("max_age", ""); maxAge != "" {
-			params["maxAge"] = maxAge
+			normalized, err := normalizeMaxAge(maxAge)
+			if err != nil {
+				return tools.InvalidParam("max_age", err.Error())
+			}
+			params["maxAge"] = normalized
 		}
 		if searchType := req.GetString("type", ""); searchType != "" {
 			params["type"] = searchType
@@ -53,4 +61,24 @@ func SearchCILogsHandler(search client.SearchCI) server.ToolHandlerFunc {
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	}
+}
+
+var daysPattern = regexp.MustCompile(`^(\d+)d$`)
+
+// maxAgeDays bounds day values so the converted hours stay a valid Go
+// duration (about 292 years).
+const maxAgeDays = math.MaxInt64 / int64(24*time.Hour)
+
+// normalizeMaxAge converts a day count such as "7d" to hours ("168h"),
+// since Search.CI only accepts Go durations. Other values pass through.
+func normalizeMaxAge(maxAge string) (string, error) {
+	m := daysPattern.FindStringSubmatch(maxAge)
+	if m == nil {
+		return maxAge, nil
+	}
+	days, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil || days > maxAgeDays {
+		return "", fmt.Errorf("day count too large")
+	}
+	return fmt.Sprintf("%dh", days*24), nil
 }
