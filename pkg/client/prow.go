@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +29,10 @@ type Deck struct {
 	// ExtraHosts are other hosts that serve the same bucket, such as the
 	// host gcsweb redirects to. They are accepted in run URLs.
 	ExtraHosts []string `json:"extra_hosts,omitempty"`
+	// TokenEnv, when set, names the environment variable holding the
+	// OpenShift OAuth token this deck requires. The token is sent only to
+	// DeckURL and GCSWebURL.
+	TokenEnv string `json:"token_env,omitempty"`
 }
 
 // DefaultDecks are the decks known out of the box.
@@ -42,6 +47,68 @@ var DefaultDecks = []Deck{
 		BucketAliases: []string{"test-platform-results"},
 		ExtraHosts:    []string{"gcs.ci.openshift.org", "storage.googleapis.com"},
 	},
+	{
+		Name:      "qe-private",
+		DeckURL:   "https://qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com",
+		GCSWebURL: "https://gcsweb-qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com",
+		Buckets:   []string{"qe-private-deck"},
+		TokenEnv:  DefaultTokenEnv,
+	},
+}
+
+// DefaultTokenEnv is the environment variable read for the OAuth token of
+// the CI cluster (the token `oc whoami -t` prints after `oc login`).
+const DefaultTokenEnv = "OPENSHIFT_CI_TOKEN"
+
+// MergeDecks returns base with decks replaced by name or appended.
+func MergeDecks(base, extra []Deck) []Deck {
+	out := append([]Deck{}, base...)
+	for _, d := range extra {
+		replaced := false
+		for i := range out {
+			if out[i].Name == d.Name {
+				out[i], replaced = d, true
+			}
+		}
+		if !replaced {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// ParseDecks decodes a JSON list of decks, as given in PROW_DECKS.
+func ParseDecks(data string) ([]Deck, error) {
+	var decks []Deck
+	if err := json.Unmarshal([]byte(data), &decks); err != nil {
+		return nil, fmt.Errorf("parsing decks: %w", err)
+	}
+	for _, d := range decks {
+		if d.Name == "" || len(d.Buckets) == 0 {
+			return nil, fmt.Errorf("deck %q needs a name and at least one bucket", d.Name)
+		}
+		for _, raw := range []string{d.DeckURL, d.GCSWebURL} {
+			u, err := url.Parse(raw)
+			if err != nil || u.Scheme != "https" || u.Host == "" {
+				return nil, fmt.Errorf("deck %q: %q is not an https URL", d.Name, raw)
+			}
+		}
+	}
+	return decks, nil
+}
+
+// AuthError reports a missing or rejected token for a deck that needs one.
+type AuthError struct {
+	Deck     string
+	TokenEnv string
+	Rejected bool
+}
+
+func (e *AuthError) Error() string {
+	if e.Rejected {
+		return fmt.Sprintf("deck %q rejected the token in %s; it may have expired. Log in to the CI cluster with oc login and set %s to the output of oc whoami -t", e.Deck, e.TokenEnv, e.TokenEnv)
+	}
+	return fmt.Sprintf("deck %q needs an OpenShift OAuth token for the CI cluster: log in with oc login and set %s to the output of oc whoami -t (a ServiceAccount token does not work)", e.Deck, e.TokenEnv)
 }
 
 // Bucket returns the bucket used to read objects of this deck.
@@ -67,6 +134,17 @@ func (d Deck) forBucket(b string) (Deck, bool) {
 		}
 	}
 	return d, false
+}
+
+// authHosts are the hosts that may receive the deck's token.
+func (d Deck) authHosts() []string {
+	var hosts []string
+	for _, raw := range []string{d.DeckURL, d.GCSWebURL} {
+		if u, err := url.Parse(raw); err == nil && u.Host != "" {
+			hosts = append(hosts, u.Host)
+		}
+	}
+	return hosts
 }
 
 func (d Deck) hosts() []string {
@@ -238,21 +316,47 @@ func (c *prowClient) do(ctx context.Context, deck Deck, rawURL string) (*http.Re
 	// https to http. The shared client is left as it is for other services.
 	hc := *c.httpClient
 	hosts := deck.hosts()
+	var authHosts []string
+	if deck.TokenEnv != "" {
+		token := strings.TrimSpace(os.Getenv(deck.TokenEnv))
+		if token == "" {
+			return nil, &AuthError{Deck: deck.Name, TokenEnv: deck.TokenEnv}
+		}
+		authHosts = deck.authHosts()
+		if containsHost(authHosts, req.URL.Host) {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
 	hc.CheckRedirect = func(r *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return errors.New("stopped after 10 redirects")
 		}
 		if !containsHost(hosts, r.URL.Host) {
-			return fmt.Errorf("redirect to %s is outside deck %q", r.URL.Host, deck.Name)
+			return &redirectError{host: r.URL.Host, deck: deck.Name}
 		}
 		if via[0].URL.Scheme == "https" && r.URL.Scheme != "https" {
 			return fmt.Errorf("redirect from https to %s refused", r.URL.Scheme)
+		}
+		// Send the token only to the deck's own hosts over https.
+		if r.URL.Scheme != "https" || !containsHost(authHosts, r.URL.Host) {
+			r.Header.Del("Authorization")
 		}
 		return nil
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
+		var redirErr *redirectError
+		if deck.TokenEnv != "" && errors.As(err, &redirErr) {
+			// A rejected token is redirected to the OAuth login page.
+			return nil, &AuthError{Deck: deck.Name, TokenEnv: deck.TokenEnv, Rejected: true}
+		}
 		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if deck.TokenEnv != "" && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden ||
+		strings.HasPrefix(resp.Request.URL.Path, "/oauth")) {
+		// A rejected token gets 401/403 or the OAuth login page.
+		resp.Body.Close()
+		return nil, &AuthError{Deck: deck.Name, TokenEnv: deck.TokenEnv, Rejected: true}
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -260,6 +364,13 @@ func (c *prowClient) do(ctx context.Context, deck Deck, rawURL string) (*http.Re
 		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: body}
 	}
 	return resp, nil
+}
+
+// redirectError is returned for a redirect to a host outside the deck.
+type redirectError struct{ host, deck string }
+
+func (e *redirectError) Error() string {
+	return fmt.Sprintf("redirect to %s is outside deck %q", e.host, e.deck)
 }
 
 func escapePath(p string) string {

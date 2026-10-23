@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/client"
 	"github.com/openshift-eng/openshift-ci-mcp/pkg/tools/domain"
@@ -340,6 +341,50 @@ func TestGetProwJobHistory_NewestPageNotCached(t *testing.T) {
 		t.Errorf("older page fetched %d times, want 1 (cached)", n)
 	}
 }
+
+type authFailProw struct{ fakeProw }
+
+func (*authFailProw) Open(context.Context, client.Deck, string) (*client.Object, error) {
+	return nil, &client.AuthError{Deck: "qe-private", TokenEnv: "OPENSHIFT_CI_TOKEN"}
+}
+
+func TestGetProwArtifactContent_AuthErrorIs401(t *testing.T) {
+	out, isErr := callTool(t, domain.GetProwArtifactContentHandler(&authFailProw{}), map[string]any{"run_url": runURL})
+	if !isErr || out["status_code"] != float64(401) || !strings.Contains(out["error"].(string), "OPENSHIFT_CI_TOKEN") {
+		t.Errorf("unexpected result: %v", out)
+	}
+}
+
+type authFailListProw struct{ fakeProw }
+
+func (*authFailListProw) List(context.Context, client.Deck, string) (*client.Listing, error) {
+	return nil, &client.AuthError{Deck: "qe-private", TokenEnv: "OPENSHIFT_CI_TOKEN", Rejected: true}
+}
+
+func TestGetProwArtifactContent_StepLookupAuthErrorIs401(t *testing.T) {
+	out, isErr := callTool(t, domain.GetProwArtifactContentHandler(&authFailListProw{}), map[string]any{"run_url": runURL, "step": "install"})
+	if !isErr || out["status_code"] != float64(401) {
+		t.Errorf("unexpected result: %v", out)
+	}
+}
+
+func TestRegisterProwTools_DeckChoices(t *testing.T) {
+	f := &decksProw{decks: []client.Deck{testDeck, {Name: "qe-private"}, {Name: "my-deck"}}}
+	s := server.NewMCPServer("t", "0")
+	domain.RegisterProwTools(s, f, nil)
+	tool := s.ListTools()["get_prow_job_history"].Tool
+	desc := tool.InputSchema.Properties["deck"].(map[string]any)["description"].(string)
+	if !strings.Contains(desc, "qe-private") || !strings.Contains(desc, "my-deck") {
+		t.Errorf("deck description misses configured decks: %q", desc)
+	}
+}
+
+type decksProw struct {
+	fakeProw
+	decks []client.Deck
+}
+
+func (d *decksProw) Decks() []client.Deck { return d.decks }
 
 func TestGetProwJobRun_NotFound(t *testing.T) {
 	_, isErr := callTool(t, domain.GetProwJobRunHandler(&fakeProw{}, nil), map[string]any{"run_url": runURL})

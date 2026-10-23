@@ -11,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/openshift-eng/openshift-ci-mcp/pkg/client"
 	mcpserver "github.com/openshift-eng/openshift-ci-mcp/pkg/server"
 )
 
@@ -54,6 +55,13 @@ func main() {
 	}
 	if v := os.Getenv("SEARCH_CI_URL"); v != "" {
 		cfg.SearchCIURL = v
+	}
+	if v := os.Getenv("PROW_DECKS"); v != "" {
+		decks, err := client.ParseDecks(v)
+		if err != nil {
+			log.Fatalf("PROW_DECKS: %v", err)
+		}
+		cfg.ProwDecks = client.MergeDecks(cfg.ProwDecks, decks)
 	}
 
 	s := mcpserver.New(cfg)

@@ -24,7 +24,7 @@ make verify             # Run all verification targets
 
 ## Architecture
 
-MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI, Prow) as 26 tools. All read-only, no authentication.
+MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI, Prow) as 26 tools. All read-only; only the private Prow deck needs a token (`OPENSHIFT_CI_TOKEN`).
 
 **Layers (top to bottom):**
 
@@ -56,4 +56,4 @@ MCP server exposing OpenShift CI data (Sippy, Release Controller, Search.CI, Pro
 - **Sippy** (`sippy.dptools.openshift.org`) — Central CI analysis. Most tools hit this.
 - **Release Controller** (`{arch}.ocp.releases.ci.openshift.org`) — Payload tags and acceptance status. Used by `get_payload_status` and `release_controller_api`.
 - **Search.CI** (`search.ci.openshift.org`) — Log and JUnit search. Used by `search_ci_logs` and `search_ci_api`.
-- **Prow** (`prow.ci.openshift.org` job history, gcsweb for the `test-platform-results-public` bucket) — Run history, run results and steps, logs and artifacts. Used by the `get_prow_*` tools. Decks are listed in `client.DefaultDecks`.
+- **Prow** (`prow.ci.openshift.org` job history, gcsweb for the `test-platform-results-public` bucket) — Run history, run results and steps, logs and artifacts. Used by the `get_prow_*` tools. Decks are listed in `client.DefaultDecks`; `PROW_DECKS` adds more. A deck with `TokenEnv` sends that variable's token only to its own deck and gcsweb hosts.

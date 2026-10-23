@@ -142,6 +142,27 @@ claude mcp add openshift-ci go -- run github.com/openshift-eng/openshift-ci-mcp/
 | `SEARCH_CI_URL` | `https://search.ci.openshift.org` | Search.CI base URL |
 | `MCP_TOOLS` | all domain groups | Comma-separated tool groups to enable (see [Tool Groups](#tool-groups)) |
 | `ENABLE_PROXY_TOOLS` | `false` | Set to `true` to add proxy tools on top of the active tool groups |
+| `OPENSHIFT_CI_TOKEN` | unset | OpenShift OAuth token for the CI cluster, needed for the `qe-private` deck (see [Private Prow Decks](#private-prow-decks)) |
+| `PROW_DECKS` | unset | JSON list of extra Prow decks, or replacements for built-in ones by name (see [Private Prow Decks](#private-prow-decks)) |
+
+### Private Prow Decks
+
+The `prow` tools know two decks: `public` (`prow.ci.openshift.org`, bucket `test-platform-results-public`) and `qe-private` (bucket `qe-private-deck`), which needs a token. Get one by logging in to the CI cluster and pass it in `OPENSHIFT_CI_TOKEN`:
+
+```bash
+oc login --web https://api.ci.l2s4.p1.openshiftapps.com:6443
+export OPENSHIFT_CI_TOKEN="$(oc whoami -t)"
+```
+
+A ServiceAccount token does not work. The token expires, so refresh the variable and restart the server when the tools report it rejected. It is sent only to the deck and gcsweb hosts of a deck that needs it, never in tool output, and not across redirects to other hosts.
+
+Other decks can be added with `PROW_DECKS`, for example:
+
+```bash
+export PROW_DECKS='[{"name":"my-deck","deck_url":"https://deck.example.com","gcsweb_url":"https://gcsweb.example.com","buckets":["my-bucket"],"token_env":"MY_DECK_TOKEN"}]'
+```
+
+> **HTTP/SSE mode:** a token in the server's environment lets every client that can reach the server read that private deck. Only set it for a server that you alone use, such as the default stdio mode.
 
 ### Tool Groups
 
@@ -199,11 +220,11 @@ Requires Go 1.24+.
 
 ## Data Sources
 
-All read-only, no authentication required.
+All read-only. Only the private Prow deck needs authentication.
 
 | Source | URL | Purpose |
 | ------ | --- | ------- |
 | Sippy | sippy.dptools.openshift.org | Jobs, tests, component readiness, regressions, payloads, health |
 | Release Controller | {arch}.ocp.releases.ci.openshift.org | Payload tags, acceptance status |
 | Search.CI | search.ci.openshift.org | Build log and JUnit failure search |
-| Prow | prow.ci.openshift.org and its gcsweb | Job history, run results and steps, logs and artifacts (`test-platform-results-public` bucket) |
+| Prow | prow.ci.openshift.org and its gcsweb; the private QE deck | Job history, run results and steps, logs and artifacts (`test-platform-results-public` and, with a token, `qe-private-deck`) |
