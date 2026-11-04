@@ -72,3 +72,85 @@ func TestSearchCILogs_LimitParam(t *testing.T) {
 		t.Errorf("expected maxResults=50, got %s", capturedParams["maxResults"])
 	}
 }
+
+func TestSearchCILogs_MaxAge(t *testing.T) {
+	tests := []struct {
+		maxAge string
+		want   string
+	}{
+		{"7d", "168h"},
+		{"1d", "24h"},
+		{" 7d ", "168h"},
+		{"7D", "168h"},
+		{"24h", "24h"},
+		{"90m", "90m"},
+		{"1h30m", "1h30m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.maxAge, func(t *testing.T) {
+			var capturedParams map[string]string
+			mock := &capturingSearchCI{
+				response: []byte(`{}`),
+				onSearch: func(query string, params map[string]string) {
+					capturedParams = params
+				},
+			}
+			handler := domain.SearchCILogsHandler(mock)
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{
+				"query":   "test-failure",
+				"max_age": tt.maxAge,
+			}
+			if _, err := handler(context.Background(), req); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedParams["maxAge"] != tt.want {
+				t.Errorf("expected maxAge=%s, got %s", tt.want, capturedParams["maxAge"])
+			}
+		})
+	}
+}
+
+func TestSearchCILogs_MaxAgeBlankIgnored(t *testing.T) {
+	var capturedParams map[string]string
+	mock := &capturingSearchCI{
+		response: []byte(`{}`),
+		onSearch: func(query string, params map[string]string) { capturedParams = params },
+	}
+	handler := domain.SearchCILogsHandler(mock)
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"query": "q", "max_age": "   "}
+	if _, err := handler(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := capturedParams["maxAge"]; ok {
+		t.Errorf("a blank max_age should not be sent, got %q", capturedParams["maxAge"])
+	}
+}
+
+func TestSearchCILogs_MaxAgeInvalid(t *testing.T) {
+	// Day counts that overflow a duration, and values that mix or scale days,
+	// which Search.CI would reject with an HTTP 400.
+	for _, maxAge := range []string{"106752d", "99999999999999999999d", "1d12h", "1D12H", "1.5d", "d"} {
+		t.Run(maxAge, func(t *testing.T) {
+			called := false
+			mock := &capturingSearchCI{
+				response: []byte(`{}`),
+				onSearch: func(query string, params map[string]string) { called = true },
+			}
+			handler := domain.SearchCILogsHandler(mock)
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{"query": "q", "max_age": maxAge}
+			result, err := handler(context.Background(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Error("expected a tool error for an invalid max_age")
+			}
+			if called {
+				t.Error("search should not be called")
+			}
+		})
+	}
+}

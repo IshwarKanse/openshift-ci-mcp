@@ -118,7 +118,7 @@ func TestGetJobReport_ResponseTrimming(t *testing.T) {
 
 func TestGetJobRuns(t *testing.T) {
 	mock := newMockSippy(map[string][]byte{
-		"/api/jobs/runs": []byte(`{"rows":[{"prow_id":1,"job":"test-job","url":"https://prow.ci/1","test_failures":0,"succeeded":true,"timestamp":1700000000,"overall_result":"S"}],"total_rows":1,"page_size":10,"page":1}`),
+		"/api/jobs/runs": []byte(`{"rows":[{"prow_id":"2116944951399944192","job":"test-job","url":"https://prow.ci/1","test_failures":0,"succeeded":true,"timestamp":"2026-11-01T17:26:15Z","overall_result":"S"}],"total_rows":1,"page_size":10,"page":1}`),
 	})
 
 	handler := domain.GetJobRunsHandler(mock, nil)
@@ -163,7 +163,7 @@ func TestGetJobRuns_PageParam(t *testing.T) {
 
 func TestGetJobRuns_ResponseTrimming(t *testing.T) {
 	mock := newMockSippy(map[string][]byte{
-		"/api/jobs/runs": []byte(`{"rows":[{"id":1,"prow_id":1,"brief_name":"job-1","job":"periodic-ci-job-1","url":"https://prow.ci/1","test_failures":3,"test_flakes":1,"failed":false,"infrastructure_failure":false,"known_failure":false,"succeeded":true,"timestamp":1700000000,"overall_result":"S","cluster":"build05","pull_request_org":"","pull_request_repo":""}],"page_size":10,"page":1,"total_rows":1}`),
+		"/api/jobs/runs": []byte(`{"rows":[{"id":2116944951399944192,"brief_name":"job-1","tags":null,"test_grid_url":"https://prow.ci/view/1","prow_id":"2116944951399944192","job":"periodic-ci-job-1","cluster":"build05","url":"https://prow.ci/1","test_flakes":1,"flaked_test_names":null,"test_failures":3,"failed":false,"infrastructure_failure":false,"known_failure":false,"succeeded":true,"timestamp":"2026-11-01T17:26:15Z","overall_result":"S","pull_request_org":"","pull_request_repo":"","pull_request_link":"","pull_request_sha":"","pull_request_author":"","labels":null}],"page_size":10,"page":1,"total_rows":1}`),
 	})
 
 	handler := domain.GetJobRunsHandler(mock, nil)
@@ -185,6 +185,12 @@ func TestGetJobRuns_ResponseTrimming(t *testing.T) {
 	}
 	if strings.Contains(text, "pull_request_org") {
 		t.Error("expected pull_request_org to be trimmed")
+	}
+	if strings.Contains(text, "test_grid_url") {
+		t.Error("expected test_grid_url to be trimmed")
+	}
+	if !strings.Contains(text, `"prow_id":"2116944951399944192"`) {
+		t.Error("expected prow_id to be kept as the exact string ID")
 	}
 	if !strings.Contains(text, "prow_id") {
 		t.Error("expected prow_id to be kept")
