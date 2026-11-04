@@ -47,6 +47,7 @@ func buildDomainServer() *mcpserver.MCPServer {
 	domain.RegisterPayloadTools(s, sippy, rc, nil)
 	domain.RegisterSearchTools(s, search)
 	domain.RegisterPullRequestTools(s, sippy, nil)
+	domain.RegisterProwTools(s, nopProw{}, nil)
 
 	return s
 }
